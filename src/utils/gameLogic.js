@@ -83,3 +83,51 @@ export function getWinningCells(b, p) {
 export function isBoardFull(b) {
   return b[0].every(c => c !== EMPTY);
 }
+
+
+export function scoreBoard(b) {
+  let s = 0;
+
+  // Center column preference
+  for (let r = 0; r < ROWS; r++) {
+    if (b[r][3] === AI) s += 3;
+  }
+
+  // Horizontal
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS - 3; c++)
+      s += evaluateWindow([0,1,2,3].map(i => b[r][c + i]));
+
+  // Vertical
+  for (let r = 0; r < ROWS - 3; r++)
+    for (let c = 0; c < COLS; c++)
+      s += evaluateWindow([0,1,2,3].map(i => b[r + i][c]));
+
+  // Diagonal \
+  for (let r = 0; r < ROWS - 3; r++)
+    for (let c = 0; c < COLS - 3; c++)
+      s += evaluateWindow([0,1,2,3].map(i => b[r + i][c + i]));
+
+  // Diagonal /
+  for (let r = 3; r < ROWS; r++)
+    for (let c = 0; c < COLS - 3; c++)
+      s += evaluateWindow([0,1,2,3].map(i => b[r - i][c + i]));
+
+  return s;
+}
+
+// Helper function used by scoreBoard
+function evaluateWindow(w) {
+  let s = 0;
+  const ai = w.filter(c => c === AI).length;
+  const pl = w.filter(c => c === PLAYER).length;
+  const em = w.filter(c => c === EMPTY).length;
+
+  if (ai === 4) s += 100;
+  else if (ai === 3 && em === 1) s += 5;
+  else if (ai === 2 && em === 2) s += 2;
+
+  if (pl === 3 && em === 1) s -= 4;
+
+  return s;
+}
