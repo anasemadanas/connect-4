@@ -114,12 +114,12 @@ The AI uses the Minimax algorithm, which:
 ---
 
 # 📁 Project Structure
-
+```
 src/
  ├── game logic (Connect 4)
  ├── App.jsx
  ├── main.jsx
-
+```
 ---
 
 # 👨‍💻 Author
