@@ -41,7 +41,94 @@ Play the game here:
 
 # 💻 Run Locally
 
-Clone the project and install dependencies:
+Start development server:
 
 ```bash
-npm install
+npm run dev
+```
+
+Then open:
+
+http://localhost:5173
+
+---
+
+# 🏗️ Build for Production
+
+```bash
+npm run build
+```
+
+Preview build locally:
+
+```bash
+npm run preview
+```
+
+---
+
+# 🌐 Deployment (GitHub Pages)
+
+This project is deployed using GitHub Pages.
+
+Steps:
+- Push code to GitHub repository
+- Go to Settings → Pages
+- Set source to: GitHub Actions
+- Deployment runs automatically
+
+---
+
+# ⚙️ Important Vite Config
+
+Make sure your vite.config.js contains:
+
+```js
+export default defineConfig({
+  plugins: [react()],
+  base: '/connect-4/', // must match repository name
+})
+```
+
+---
+
+# 🧠 Game Rules
+
+- Players take turns dropping discs
+- First to connect 4 wins
+- Connections can be:
+  - Horizontal
+  - Vertical
+  - Diagonal
+
+---
+
+# 🤖 AI System
+
+The AI uses the Minimax algorithm, which:
+
+- Simulates future moves
+- Chooses the best possible outcome
+- Provides a challenging opponent
+
+---
+
+# 📁 Project Structure
+
+src/
+ ├── game logic (Connect 4)
+ ├── App.jsx
+ ├── main.jsx
+
+---
+
+# 👨‍💻 Author
+
+Created by Anas Emad
+
+---
+
+# 📌 Notes
+
+- Works best on GitHub Pages or Vercel
+- Ensure correct base path if using GitHub Pages
