@@ -5,7 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   // Needed for GitHub Pages when deployed under:
   // https://anasemadanas.github.io/connect-4/
-  //base: '/connect-4/',
-  base: '/anasemadanas/',
+  base: '/connect-4/',
   plugins: [react()],
 })
