@@ -124,7 +124,8 @@ src/
 
 # 👨‍💻 Author
 
-Created by Anas Emad
+Created by Zaid Shaheen and Anas Emad
+Under the supervision of Dr. Yazid Al-Sheikh ❤️
 
 ---
 
