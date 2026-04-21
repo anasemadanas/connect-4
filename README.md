@@ -125,7 +125,7 @@ src/
 # 👨‍💻 Author
 
 - Created by Zaid Shaheen and Anas Emad
-- Under the supervision of Dr. Yazid Al-Sheikh ❤️
+Under the supervision of Dr. Yazid Al-Sheikh ❤️
 
 ---
 
