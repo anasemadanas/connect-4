@@ -49,7 +49,9 @@ npm run dev
 
 Then open:
 
+```text
 http://localhost:5173
+```
 
 ---
 
@@ -72,6 +74,7 @@ npm run preview
 This project is deployed using GitHub Pages.
 
 Steps:
+
 - Push code to GitHub repository
 - Go to Settings → Pages
 - Set source to: GitHub Actions
@@ -81,12 +84,12 @@ Steps:
 
 # ⚙️ Important Vite Config
 
-Make sure your vite.config.js contains:
+Make sure your `vite.config.js` contains:
 
 ```js
 export default defineConfig({
   plugins: [react()],
-  base: '/connect-4/', // must match repository name
+  base: '/connect-4/',
 })
 ```
 
@@ -113,19 +116,27 @@ The AI uses the Minimax algorithm, which:
 
 ---
 
+# 🎯 Project Purpose
+
+This project was created to experiment with the **Minimax algorithm** and explore how AI thinks when making decisions in strategy games.
+
+---
+
 # 📁 Project Structure
-```
+
+```text
 src/
  ├── game logic (Connect 4)
  ├── App.jsx
  ├── main.jsx
 ```
+
 ---
 
-# 👨‍💻 Author
+# 👨‍💻 Author ❤️
 
-- Created by Zaid Shaheen and Anas Emad.
-Under the supervision of Dr. Yazid Al-Sheikh ❤️.
+Created by **Zaid Shaheen** and **Anas Emad**  
+Under the supervision of **Dr. Yazid Al-Sheikh**
 
 ---
 
