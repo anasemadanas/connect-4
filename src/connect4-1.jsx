@@ -1,470 +1,403 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
-// ─── Constants ───
+// ═══════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════
 const ROWS = 6, COLS = 7, EMPTY = 0, PLAYER = 1, AI = 2;
-const DIFFICULTIES = {
-  easy:       { name: "Easy",       depth: 1, mistake: 0.4 },
-  normal:     { name: "Normal",     depth: 3, mistake: 0.15 },
-  hard:       { name: "Hard",       depth: 5, mistake: 0 },
-  impossible: { name: "Impossible", depth: 7, mistake: 0 },
+const DIFF = {
+  easy:       { name: "Easy",       depth: 2, mistake: 0.35 },
+  normal:     { name: "Normal",     depth: 4, mistake: 0.10 },
+  hard:       { name: "Hard",       depth: 6, mistake: 0 },
+  impossible: { name: "Impossible", depth: 8, mistake: 0 },
 };
 
-// ─── Game Logic ───
-const mkBoard = () => Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
-const clone = b => b.map(r => [...r]);
-const validMove = (b, c) => c >= 0 && c < COLS && b[0][c] === EMPTY;
-const validCols = b => Array.from({ length: COLS }, (_, i) => i).filter(c => validMove(b, c));
+// ═══════════════════════════════════════════
+//  GAME LOGIC (pure)
+// ═══════════════════════════════════════════
+const mkB = () => Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
+const cp = b => b.map(r => [...r]);
+const ok = (b, c) => c >= 0 && c < COLS && b[0][c] === EMPTY;
+const cols = b => Array.from({ length: COLS }, (_, i) => i).filter(c => ok(b, c));
+const full = b => b[0].every(x => x !== EMPTY);
 
 function drop(b, c, p) {
   for (let r = ROWS - 1; r >= 0; r--) if (b[r][c] === EMPTY) { b[r][c] = p; return r; }
   return -1;
 }
+
 function wins(b, p) {
   for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r][c+i] === p)) return true;
-  for (let r = 0; r < ROWS - 3; r++)
+    for (let c = 0; c <= COLS - 4; c++)
+      if (b[r][c] === p && b[r][c+1] === p && b[r][c+2] === p && b[r][c+3] === p) return true;
+  for (let r = 0; r <= ROWS - 4; r++)
     for (let c = 0; c < COLS; c++)
-      if ([0,1,2,3].every(i => b[r+i][c] === p)) return true;
-  for (let r = 0; r < ROWS - 3; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r+i][c+i] === p)) return true;
+      if (b[r][c] === p && b[r+1][c] === p && b[r+2][c] === p && b[r+3][c] === p) return true;
+  for (let r = 0; r <= ROWS - 4; r++)
+    for (let c = 0; c <= COLS - 4; c++)
+      if (b[r][c] === p && b[r+1][c+1] === p && b[r+2][c+2] === p && b[r+3][c+3] === p) return true;
   for (let r = 3; r < ROWS; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r-i][c+i] === p)) return true;
+    for (let c = 0; c <= COLS - 4; c++)
+      if (b[r][c] === p && b[r-1][c+1] === p && b[r-2][c+2] === p && b[r-3][c+3] === p) return true;
   return false;
 }
-function winCells(b, p) {
+
+function getWC(b, p) {
   const s = new Set();
-  const add = arr => arr.forEach(([r,c]) => s.add(`${r}-${c}`));
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r][c+i] === p)) add([0,1,2,3].map(i => [r,c+i]));
-  for (let r = 0; r < ROWS - 3; r++)
-    for (let c = 0; c < COLS; c++)
-      if ([0,1,2,3].every(i => b[r+i][c] === p)) add([0,1,2,3].map(i => [r+i,c]));
-  for (let r = 0; r < ROWS - 3; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r+i][c+i] === p)) add([0,1,2,3].map(i => [r+i,c+i]));
-  for (let r = 3; r < ROWS; r++)
-    for (let c = 0; c < COLS - 3; c++)
-      if ([0,1,2,3].every(i => b[r-i][c+i] === p)) add([0,1,2,3].map(i => [r-i,c+i]));
+  const a = arr => arr.forEach(([r,c]) => s.add(`${r}-${c}`));
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c <= COLS-4; c++)
+    if ([0,1,2,3].every(i => b[r][c+i] === p)) a([0,1,2,3].map(i => [r,c+i]));
+  for (let r = 0; r <= ROWS-4; r++) for (let c = 0; c < COLS; c++)
+    if ([0,1,2,3].every(i => b[r+i][c] === p)) a([0,1,2,3].map(i => [r+i,c]));
+  for (let r = 0; r <= ROWS-4; r++) for (let c = 0; c <= COLS-4; c++)
+    if ([0,1,2,3].every(i => b[r+i][c+i] === p)) a([0,1,2,3].map(i => [r+i,c+i]));
+  for (let r = 3; r < ROWS; r++) for (let c = 0; c <= COLS-4; c++)
+    if ([0,1,2,3].every(i => b[r-i][c+i] === p)) a([0,1,2,3].map(i => [r-i,c+i]));
   return [...s];
 }
-const full = b => b[0].every(c => c !== EMPTY);
-const terminal = b => wins(b, PLAYER) || wins(b, AI) || full(b);
 
-function evalWin(w) {
+// ═══════════════════════════════════════════
+//  HEURISTIC
+// ═══════════════════════════════════════════
+function evalW(w) {
   let s = 0;
-  const a = w.filter(x => x === AI).length, e = w.filter(x => x === EMPTY).length, p = w.filter(x => x === PLAYER).length;
-  if (a === 4) s += 100; else if (a === 3 && e === 1) s += 5; else if (a === 2 && e === 2) s += 2;
+  const ai = w.filter(x => x === AI).length, e = w.filter(x => x === EMPTY).length, p = w.filter(x => x === PLAYER).length;
+  if (ai === 4) s += 100; else if (ai === 3 && e === 1) s += 5; else if (ai === 2 && e === 2) s += 2;
   if (p === 3 && e === 1) s -= 4;
   return s;
 }
-function scoreBoard(b) {
+
+function scoreB(b) {
   let s = 0;
   for (let r = 0; r < ROWS; r++) s += b[r][3] === AI ? 3 : 0;
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS-3; c++) s += evalWin([0,1,2,3].map(i => b[r][c+i]));
-  for (let r = 0; r < ROWS-3; r++) for (let c = 0; c < COLS; c++) s += evalWin([0,1,2,3].map(i => b[r+i][c]));
-  for (let r = 0; r < ROWS-3; r++) for (let c = 0; c < COLS-3; c++) s += evalWin([0,1,2,3].map(i => b[r+i][c+i]));
-  for (let r = 3; r < ROWS; r++) for (let c = 0; c < COLS-3; c++) s += evalWin([0,1,2,3].map(i => b[r-i][c+i]));
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c <= COLS-4; c++) s += evalW([0,1,2,3].map(i => b[r][c+i]));
+  for (let r = 0; r <= ROWS-4; r++) for (let c = 0; c < COLS; c++) s += evalW([0,1,2,3].map(i => b[r+i][c]));
+  for (let r = 0; r <= ROWS-4; r++) for (let c = 0; c <= COLS-4; c++) s += evalW([0,1,2,3].map(i => b[r+i][c+i]));
+  for (let r = 3; r < ROWS; r++) for (let c = 0; c <= COLS-4; c++) s += evalW([0,1,2,3].map(i => b[r-i][c+i]));
   return s;
 }
 
-function describeHeuristic(b) {
-  const details = [];
-  const center = Array.from({length: ROWS}, (_,r) => b[r][3]).filter(x => x === AI).length;
-  if (center > 0) details.push({ label: "Center column bonus", value: `+${center * 3}` });
-  let threes = 0, twos = 0, blocks = 0;
-  const allW = [];
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS-3; c++) allW.push([0,1,2,3].map(i => b[r][c+i]));
-  for (let r = 0; r < ROWS-3; r++) for (let c = 0; c < COLS; c++) allW.push([0,1,2,3].map(i => b[r+i][c]));
-  for (let r = 0; r < ROWS-3; r++) for (let c = 0; c < COLS-3; c++) allW.push([0,1,2,3].map(i => b[r+i][c+i]));
-  for (let r = 3; r < ROWS; r++) for (let c = 0; c < COLS-3; c++) allW.push([0,1,2,3].map(i => b[r-i][c+i]));
-  for (const w of allW) {
-    const a = w.filter(x => x === AI).length, e = w.filter(x => x === EMPTY).length, p = w.filter(x => x === PLAYER).length;
-    if (a === 3 && e === 1) threes++;
-    if (a === 2 && e === 2) twos++;
-    if (p === 3 && e === 1) blocks++;
-  }
-  if (threes) details.push({ label: "3-in-a-row with gap", value: `${threes} (+${threes*5})` });
-  if (twos) details.push({ label: "2-in-a-row with gaps", value: `${twos} (+${twos*2})` });
-  if (blocks) details.push({ label: "Threats to block", value: `${blocks} (-${blocks*4})` });
-  return details;
-}
+// ═══════════════════════════════════════════
+//  MINIMAX + ALPHA-BETA + TRACE
+// ═══════════════════════════════════════════
+function minimax(b, depth, alpha, beta, isMax, node, evts, maxD) {
+  const vc = cols(b);
 
-// ─── Minimax with trace ───
-const fmtAB = v => v === Infinity ? "+\u221E" : v === -Infinity ? "-\u221E" : v >= 100000 ? "+100k(W)" : v <= -100000 ? "-100k(L)" : String(v);
-const fmtS = v => v >= 100000 ? "+100k (WIN)" : v <= -100000 ? "-100k (LOSE)" : String(v);
-
-function minimax(b, depth, alpha, beta, max, node, trace, maxD) {
-  const vc = validCols(b);
-  const lvl = maxD - depth;
-  const who = max ? "MAX(AI)" : "MIN(You)";
-  const pad = "  ".repeat(lvl + 1);
-
-  if (depth === 0 || terminal(b)) {
-    let sc, reason;
-    if (wins(b, AI)) { sc = 100000; reason = "AI wins!"; }
-    else if (wins(b, PLAYER)) { sc = -100000; reason = "Player wins!"; }
-    else if (full(b)) { sc = 0; reason = "Draw"; }
-    else { sc = scoreBoard(b); reason = `Heuristic=${sc}`; }
-    node.score = sc; node.reason = reason; node.leaf = true;
-    trace.push({ lvl, type: "leaf", text: `${pad}[D${lvl}] ${reason} \u2192 ${fmtS(sc)}` });
+  if (depth === 0 || wins(b, AI) || wins(b, PLAYER) || full(b)) {
+    let sc;
+    if (wins(b, AI)) sc = 100000 + depth;
+    else if (wins(b, PLAYER)) sc = -100000 - depth;
+    else if (full(b)) sc = 0;
+    else sc = scoreB(b);
+    node.score = sc; node.leaf = true;
     return [null, sc];
   }
 
   node.children = [];
-  trace.push({ lvl, type: "explore", text: `${pad}[D${lvl}] ${who} cols=${JSON.stringify(vc)} \u03B1=${fmtAB(alpha)} \u03B2=${fmtAB(beta)}` });
 
-  if (max) {
+  if (isMax) {
     let best = -Infinity, bestC = vc[0];
     for (const col of vc) {
-      const t = clone(b); drop(t, col, AI);
+      const t = cp(b); drop(t, col, AI);
       const ch = { col, who: "AI", pruned: false, children: [] };
       node.children.push(ch);
-      trace.push({ lvl, type: "try", text: `${pad} \u2192 Try Col ${col} (AI)` });
-      const [, sc] = minimax(t, depth-1, alpha, beta, false, ch, trace, maxD);
+      const [, sc] = minimax(t, depth - 1, alpha, beta, false, ch, evts, maxD);
       ch.score = sc;
-      trace.push({ lvl, type: "return", text: `${pad} \u2190 Col ${col} = ${fmtS(sc)}` });
-      if (sc > best) {
-        const old = best; best = sc; bestC = col;
-        trace.push({ lvl, type: "update", text: `${pad}   \u2605 New best: col ${col} (${fmtS(sc)}${old > -Infinity ? ` > ${fmtS(old)}` : ""})` });
-      }
-      const oldA = alpha; alpha = Math.max(alpha, best);
-      if (alpha !== oldA) trace.push({ lvl, type: "alpha", text: `${pad}   \u03B1 updated: ${fmtAB(oldA)} \u2192 ${fmtAB(alpha)}` });
+      if (sc > best) { best = sc; bestC = col; }
+      alpha = Math.max(alpha, best);
       if (alpha >= beta) {
-        const pruned = vc.filter(x => x > col);
-        trace.push({ lvl, type: "prune", text: `${pad}   \u2702 PRUNE! \u03B1(${fmtAB(alpha)}) \u2265 \u03B2(${fmtAB(beta)})${pruned.length ? ` skip ${JSON.stringify(pruned)}` : ""}` });
-        pruned.forEach(rc => node.children.push({ col: rc, who: "AI", pruned: true, score: null, children: [] }));
+        const sk = vc.filter(x => x > col);
+        if (sk.length) evts.push({ lvl: maxD - depth, who: "AI", col, alpha, beta, skipped: sk });
+        sk.forEach(rc => node.children.push({ col: rc, who: "AI", pruned: true, score: null, children: [] }));
         break;
       }
     }
     node.score = best; node.bestCol = bestC;
-    trace.push({ lvl, type: "result", text: `${pad}[D${lvl}] ${who} \u2192 col ${bestC}, score ${fmtS(best)}` });
     return [bestC, best];
   } else {
     let best = Infinity, bestC = vc[0];
     for (const col of vc) {
-      const t = clone(b); drop(t, col, PLAYER);
+      const t = cp(b); drop(t, col, PLAYER);
       const ch = { col, who: "You", pruned: false, children: [] };
       node.children.push(ch);
-      trace.push({ lvl, type: "try", text: `${pad} \u2192 Try Col ${col} (You)` });
-      const [, sc] = minimax(t, depth-1, alpha, beta, true, ch, trace, maxD);
+      const [, sc] = minimax(t, depth - 1, alpha, beta, true, ch, evts, maxD);
       ch.score = sc;
-      trace.push({ lvl, type: "return", text: `${pad} \u2190 Col ${col} = ${fmtS(sc)}` });
-      if (sc < best) {
-        const old = best; best = sc; bestC = col;
-        trace.push({ lvl, type: "update", text: `${pad}   \u2605 New best: col ${col} (${fmtS(sc)}${old < Infinity ? ` < ${fmtS(old)}` : ""})` });
-      }
-      const oldB = beta; beta = Math.min(beta, best);
-      if (beta !== oldB) trace.push({ lvl, type: "beta", text: `${pad}   \u03B2 updated: ${fmtAB(oldB)} \u2192 ${fmtAB(beta)}` });
+      if (sc < best) { best = sc; bestC = col; }
+      beta = Math.min(beta, best);
       if (alpha >= beta) {
-        const pruned = vc.filter(x => x > col);
-        trace.push({ lvl, type: "prune", text: `${pad}   \u2702 PRUNE! \u03B1(${fmtAB(alpha)}) \u2265 \u03B2(${fmtAB(beta)})${pruned.length ? ` skip ${JSON.stringify(pruned)}` : ""}` });
-        pruned.forEach(rc => node.children.push({ col: rc, who: "You", pruned: true, score: null, children: [] }));
+        const sk = vc.filter(x => x > col);
+        if (sk.length) evts.push({ lvl: maxD - depth, who: "You", col, alpha, beta, skipped: sk });
+        sk.forEach(rc => node.children.push({ col: rc, who: "You", pruned: true, score: null, children: [] }));
         break;
       }
     }
     node.score = best; node.bestCol = bestC;
-    trace.push({ lvl, type: "result", text: `${pad}[D${lvl}] ${who} \u2192 col ${bestC}, score ${fmtS(best)}` });
     return [bestC, best];
   }
 }
 
-function countNodes(n) {
-  let t = 1, p = n.pruned ? 1 : 0;
-  for (const c of (n.children || [])) { const [tt, pp] = countNodes(c); t += tt; p += pp; }
-  return [t, p];
-}
+function cntN(n) { let t = 1, p = n.pruned ? 1 : 0; for (const c of (n.children || [])) { const [tt, pp] = cntN(c); t += tt; p += pp; } return [t, p]; }
 
-function runAI(board, diff) {
-  const { depth, mistake } = DIFFICULTIES[diff];
+function runAI(board, diffKey) {
+  const { depth, mistake } = DIFF[diffKey];
   const tree = { col: null, who: "ROOT", children: [], pruned: false };
-  const trace = [];
+  const evts = [];
   const t0 = performance.now();
-  const [bestCol, score] = minimax(board, depth, -Infinity, Infinity, true, tree, trace, depth);
-  const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
-  const [totalN, prunedN] = countNodes(tree);
+  const [bestCol, score] = minimax(board, depth, -Infinity, Infinity, true, tree, evts, depth);
+  const ms = performance.now() - t0;
+  const [totalN, prunedN] = cntN(tree);
 
-  let chosenCol = bestCol, mistake_made = false;
-  const vc = validCols(board);
+  let chosen = bestCol, oops = false;
+  const vc = cols(board);
   if (mistake > 0 && Math.random() < mistake && vc.length > 1) {
-    const other = vc.filter(c => c !== bestCol);
-    if (other.length) { chosenCol = other[Math.floor(Math.random() * other.length)]; mistake_made = true; }
+    const o = vc.filter(c => c !== bestCol);
+    if (o.length) { chosen = o[Math.floor(Math.random() * o.length)]; oops = true; }
   }
 
-  const tb = clone(board); drop(tb, chosenCol, AI);
-  const heuristic = describeHeuristic(tb);
-
-  const colScores = (tree.children || []).map(ch => ({
-    col: ch.col, score: ch.score, pruned: ch.pruned, best: ch.col === bestCol
-  }));
-
-  return { chosenCol, bestCol, score, trace, tree, colScores, heuristic, totalN, prunedN, elapsed, mistake_made, diff };
+  const colScores = (tree.children || []).map(ch => ({ col: ch.col, score: ch.score, pruned: ch.pruned, best: ch.col === bestCol }));
+  return { chosen, bestCol, score, tree, colScores, evts, totalN, prunedN, ms, oops, diffKey };
 }
 
-// ─── Tree Component ───
-function TreeNode({ node, depth = 0, maxD = 2 }) {
-  if (!node || depth > maxD) return null;
-  const isRoot = node.who === "ROOT";
-  const isAI = node.who === "AI";
-  const pruned = node.pruned;
-  const sc = node.score;
+// ═══════════════════════════════════════════
+//  VISUAL COMPONENTS
+// ═══════════════════════════════════════════
+const fS = v => v == null ? "?" : v >= 100000 ? "WIN" : v <= -100000 ? "LOSE" : String(v);
 
-  const bg = pruned ? "#1e1e2e" : isRoot ? "#2d3250" : isAI ? "#3b2f0a" : "#3b0a0a";
-  const border = sc != null ? (sc >= 100000 ? "#22c55e" : sc <= -100000 ? "#ef4444" : "transparent") : "transparent";
-  const scoreColor = pruned ? "#555" : sc >= 100000 ? "#4ade80" : sc <= -100000 ? "#f87171" : "#fbbf24";
-  const label = isRoot ? "AI" : `C${node.col}`;
-  const scoreText = sc == null ? "" : sc >= 100000 ? " W" : sc <= -100000 ? " L" : ` ${sc}`;
-
+function TreeViz({ node, d = 0, max = 2 }) {
+  if (!node || d > max) return null;
+  const root = node.who === "ROOT", pr = node.pruned, sc = node.score, isAI = node.who === "AI";
+  const bg = pr ? "#111" : root ? "#1e293b" : isAI ? "#422006" : "#450a0a";
+  const bd = sc != null ? (sc >= 100000 ? "#22c55e" : sc <= -100000 ? "#ef4444" : "#252f3f") : "#1a1f2e";
+  const scC = pr ? "#444" : sc >= 100000 ? "#4ade80" : sc <= -100000 ? "#f87171" : "#fbbf24";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
       <div style={{
-        padding: "2px 7px", borderRadius: 5, background: bg, fontSize: 10,
-        border: `1.5px solid ${border}`, color: pruned ? "#555" : "#cbd5e1",
-        opacity: pruned ? 0.45 : 1, textDecoration: pruned ? "line-through" : "none",
-        whiteSpace: "nowrap", fontFamily: "'IBM Plex Mono', monospace",
-        display: "flex", alignItems: "center", gap: 3,
+        padding: "2px 7px", borderRadius: 5, background: bg, border: `1.5px solid ${bd}`,
+        fontSize: 10, color: pr ? "#444" : "#cbd5e1", opacity: pr ? .4 : 1,
+        textDecoration: pr ? "line-through" : "none", whiteSpace: "nowrap",
+        fontFamily: "inherit", display: "flex", alignItems: "center", gap: 3,
       }}>
-        <span>{label}</span>
-        {scoreText && <span style={{ color: scoreColor, fontWeight: 700 }}>{scoreText}</span>}
-        {pruned && <span style={{ fontSize: 8 }}>{"\u2702"}</span>}
+        <span>{root ? "AI" : `C${node.col}`}</span>
+        {sc != null && <span style={{ color: scC, fontWeight: 700 }}>{fS(sc)}</span>}
+        {pr && <span style={{ fontSize: 8 }}>{"\u2702"}</span>}
       </div>
-      {node.children?.length > 0 && depth < maxD && (
-        <div style={{ display: "flex", gap: 2, marginTop: 1 }}>
-          {node.children.map((ch, i) => <TreeNode key={i} node={ch} depth={depth + 1} maxD={maxD} />)}
+      {node.children?.length > 0 && d < max && (
+        <div style={{ display: "flex", gap: 3, marginTop: 2 }}>
+          {node.children.map((ch, i) => <TreeViz key={i} node={ch} d={d + 1} max={max} />)}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Trace line color ───
-function traceColor(type) {
-  switch(type) {
-    case "prune": return "#f97316";
-    case "update": case "result": return "#fbbf24";
-    case "alpha": return "#38bdf8";
-    case "beta": return "#c084fc";
-    case "leaf": return "#6ee7b7";
-    default: return "#94a3b8";
-  }
+function ScoreBar({ score, best, pruned, col }) {
+  if (pruned) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+      <div style={{ width: 34, fontSize: 11, color: "#444", fontWeight: 600, fontFamily: "inherit" }}>Col {col}</div>
+      <div style={{ flex: 1, height: 20, background: "#0d1117", borderRadius: 5, display: "flex", alignItems: "center", padding: "0 8px", border: "1px solid #1a1f2e" }}>
+        <span style={{ fontSize: 10, color: "#444", textDecoration: "line-through" }}>{"\u2702"} PRUNED</span>
+      </div>
+    </div>
+  );
+  const isW = score >= 100000, isL = score <= -100000;
+  const display = isW ? "WIN" : isL ? "LOSE" : score;
+  const mx = 50;
+  const cl = isW ? mx : isL ? -mx : Math.max(-mx, Math.min(mx, score));
+  const pct = ((cl + mx) / (2 * mx)) * 100;
+  const barC = isW ? "#22c55e" : isL ? "#ef4444" : score > 0 ? "#eab308" : score < 0 ? "#f97316" : "#475569";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+      <div style={{ width: 34, fontSize: 11, color: best ? "#fbbf24" : "#8896ab", fontWeight: best ? 700 : 500, fontFamily: "inherit" }}>Col {col}</div>
+      <div style={{ flex: 1, height: 20, background: "#0d1117", borderRadius: 5, position: "relative", overflow: "hidden", border: best ? "1.5px solid #fbbf24" : "1px solid #1a1f2e" }}>
+        <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "#252f3f" }} />
+        <div style={{
+          position: "absolute", top: 2, bottom: 2, borderRadius: 3,
+          left: score >= 0 ? "50%" : `${pct}%`,
+          width: `${Math.abs(pct - 50)}%`,
+          background: barC, transition: "all .3s ease",
+        }} />
+        <div style={{
+          position: "absolute", right: 8, top: 0, bottom: 0, display: "flex", alignItems: "center",
+          fontSize: 10, fontWeight: 700, color: best ? "#fbbf24" : "#e2e8f0",
+        }}>{display}{best ? " \u25C0" : ""}</div>
+      </div>
+    </div>
+  );
 }
 
-// ─── Colors ───
-const C = {
-  bg: "#0b0f1a", board: "#162044", boardEdge: "#0e1738",
-  empty: "#0b0f1a", player: "#ef4444", playerG: "#f87171",
-  ai: "#eab308", aiG: "#facc15", win: "#22c55e", winG: "#4ade80",
-  text: "#e2e8f0", dim: "#64748b", panel: "#0f1629", panelBd: "#1e293b",
-  accent: "#3b82f6",
+// ═══════════════════════════════════════════
+//  COLORS
+// ═══════════════════════════════════════════
+const K = {
+  bg: "#050810", board: "#12203e", boardE: "#0a1530", empty: "#070b16",
+  pl: "#ef4444", plG: "#f87171", ai: "#eab308", aiG: "#facc15",
+  win: "#22c55e", winG: "#4ade80", txt: "#e2e8f0", dim: "#64748b",
+  pan: "#0a0f1e", panBd: "#172033", acc: "#3b82f6",
 };
 
-// ─── Main Component ───
+// ═══════════════════════════════════════════
+//  MAIN COMPONENT
+// ═══════════════════════════════════════════
 export default function ConnectFour() {
-  const [phase, setPhase] = useState("menu"); // menu | playing | gameover
+  const [phase, setPhase] = useState("menu");
   const [diff, setDiff] = useState("normal");
-  const [firstTurn, setFirstTurn] = useState("player"); // player | ai | random
-  const [board, setBoard] = useState(mkBoard);
-  const [turn, setTurn] = useState(PLAYER);
+  const [first, setFirst] = useState("player");
+  const [board, setBoard] = useState(mkB);
   const [status, setStatus] = useState("");
   const [hover, setHover] = useState(-1);
-  const [wCells, setWCells] = useState([]);
-  const [lastDrop, setLastDrop] = useState(null);
-  const [scores, setScores] = useState({ p: 0, a: 0, d: 0 });
-  const [aiResult, setAiResult] = useState(null);
-  const [traceMode, setTraceMode] = useState("key"); // key | full
-  const [treeDepth, setTreeDepth] = useState(2);
-  const [panelTab, setPanelTab] = useState("summary");
-  const [moveNum, setMoveNum] = useState(0);
-  const aiRef = useRef(false);
-  const traceRef = useRef(null);
+  const [wc, setWc] = useState([]);
+  const [ld, setLd] = useState(null);
+  const [sc, setSc] = useState({ p: 0, a: 0, d: 0 });
+  const [ai, setAi] = useState(null);
+  const [td, setTd] = useState(2);
+  const [mn, setMn] = useState(0);
+  const ref = useRef(false);
 
-  const startGame = useCallback(() => {
-    const b = mkBoard();
+  const go = useCallback(() => {
     let t = PLAYER;
-    if (firstTurn === "ai") t = AI;
-    else if (firstTurn === "random") t = Math.random() < 0.5 ? PLAYER : AI;
-    setBoard(b); setTurn(t); setStatus(t === PLAYER ? "your_turn" : "ai_thinking");
-    setHover(-1); setWCells([]); setLastDrop(null); setAiResult(null);
-    setMoveNum(0); setPhase("playing"); aiRef.current = false;
-  }, [firstTurn]);
+    if (first === "ai") t = AI;
+    else if (first === "random") t = Math.random() < .5 ? PLAYER : AI;
+    setBoard(mkB()); setStatus(t === PLAYER ? "turn" : "think");
+    setHover(-1); setWc([]); setLd(null); setAi(null);
+    setMn(0); setPhase("play"); ref.current = false;
+  }, [first]);
 
-  const resetToMenu = useCallback(() => {
-    setPhase("menu"); setAiResult(null); aiRef.current = false;
-  }, []);
-
-  const handleClick = useCallback(col => {
-    if (status !== "your_turn" || !validMove(board, col)) return;
-    const nb = clone(board); const row = drop(nb, col, PLAYER);
-    setBoard(nb); setLastDrop(`${row}-${col}`); setMoveNum(m => m + 1);
-    if (wins(nb, PLAYER)) {
-      setWCells(winCells(nb, PLAYER)); setStatus("player_wins"); setPhase("gameover");
-      setScores(s => ({ ...s, p: s.p + 1 }));
-    } else if (full(nb)) {
-      setStatus("draw"); setPhase("gameover"); setScores(s => ({ ...s, d: s.d + 1 }));
-    } else { setTurn(AI); setStatus("ai_thinking"); }
+  const click = useCallback(c => {
+    if (status !== "turn" || !ok(board, c)) return;
+    const nb = cp(board); const r = drop(nb, c, PLAYER);
+    setBoard(nb); setLd(`${r}-${c}`); setMn(m => m + 1);
+    if (wins(nb, PLAYER)) { setWc(getWC(nb, PLAYER)); setStatus("pw"); setPhase("over"); setSc(s => ({ ...s, p: s.p + 1 })); }
+    else if (full(nb)) { setStatus("dr"); setPhase("over"); setSc(s => ({ ...s, d: s.d + 1 })); }
+    else setStatus("think");
   }, [board, status]);
 
   useEffect(() => {
-    if (status !== "ai_thinking" || aiRef.current) return;
-    aiRef.current = true;
-    const timer = setTimeout(() => {
-      const result = runAI(board, diff);
-      setAiResult(result);
-      const nb = clone(board); const row = drop(nb, result.chosenCol, AI);
-      setBoard(nb); setLastDrop(`${row}-${result.chosenCol}`); setMoveNum(m => m + 1);
-      if (wins(nb, AI)) {
-        setWCells(winCells(nb, AI)); setStatus("ai_wins"); setPhase("gameover");
-        setScores(s => ({ ...s, a: s.a + 1 }));
-      } else if (full(nb)) {
-        setStatus("draw"); setPhase("gameover"); setScores(s => ({ ...s, d: s.d + 1 }));
-      } else { setTurn(PLAYER); setStatus("your_turn"); }
-      aiRef.current = false;
-    }, 350);
-    return () => clearTimeout(timer);
+    if (status !== "think" || ref.current) return;
+    ref.current = true;
+    const t = setTimeout(() => {
+      const res = runAI(board, diff);
+      setAi(res);
+      const nb = cp(board); const r = drop(nb, res.chosen, AI);
+      setBoard(nb); setLd(`${r}-${res.chosen}`); setMn(m => m + 1);
+      if (wins(nb, AI)) { setWc(getWC(nb, AI)); setStatus("aw"); setPhase("over"); setSc(s => ({ ...s, a: s.a + 1 })); }
+      else if (full(nb)) { setStatus("dr"); setPhase("over"); setSc(s => ({ ...s, d: s.d + 1 })); }
+      else setStatus("turn");
+      ref.current = false;
+    }, 300);
+    return () => clearTimeout(t);
   }, [status, board, diff]);
 
-  useEffect(() => {
-    if (traceRef.current) traceRef.current.scrollTop = traceRef.current.scrollHeight;
-  }, [aiResult, panelTab]);
-
-  const previewRow = col => {
-    if (status !== "your_turn" || col < 0) return -1;
-    for (let r = ROWS - 1; r >= 0; r--) if (board[r][col] === EMPTY) return r;
+  const pvR = c => {
+    if (status !== "turn" || c < 0) return -1;
+    for (let r = ROWS - 1; r >= 0; r--) if (board[r][c] === EMPTY) return r;
     return -1;
   };
 
-  const filteredTrace = useMemo(() => {
-    if (!aiResult) return [];
-    if (traceMode === "full") return aiResult.trace;
-    return aiResult.trace.filter(t => ["explore","prune","update","result","alpha","beta","leaf"].includes(t.type) && t.lvl <= 1);
-  }, [aiResult, traceMode]);
+  const over = phase === "over";
+  const stTxt = { turn: "Your turn", think: "AI thinking\u2026", pw: "You win!", aw: "AI wins!", dr: "Draw!" }[status] || "";
 
-  const gameOver = phase === "gameover";
-  const statusText = { your_turn: "Your turn", ai_thinking: "AI thinking\u2026", player_wins: "You win!", ai_wins: "AI wins!", draw: "Draw!" }[status] || "";
-
-  // ── MENU ──
+  // ══════ MENU ══════
   if (phase === "menu") return (
-    <div style={{
-      minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Mono', monospace",
-      color: C.text, padding: 20,
-    }}>
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Mono',monospace", color: K.txt, padding: 20 }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');`}</style>
-      <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: 3, marginBottom: 8, color: C.ai }}>CONNECT FOUR</div>
-      <div style={{ fontSize: 13, color: C.dim, marginBottom: 32 }}>Human vs AI \u2014 Minimax with Alpha-Beta Pruning</div>
+      <div style={{ fontSize: 42, fontWeight: 700, letterSpacing: 5, marginBottom: 6, color: K.ai }}>CONNECT 4</div>
+      <div style={{ fontSize: 12, color: K.dim, marginBottom: 40 }}>Minimax \u00B7 Alpha-Beta Pruning \u00B7 AI</div>
 
-      <div style={{ width: 320, marginBottom: 24 }}>
-        <div style={{ fontSize: 11, color: C.dim, textTransform: "uppercase", letterSpacing: 2, marginBottom: 10 }}>Difficulty</div>
+      <div style={{ width: 360, marginBottom: 28 }}>
+        <div style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 2, marginBottom: 10 }}>Difficulty</div>
         <div style={{ display: "flex", gap: 6 }}>
-          {Object.entries(DIFFICULTIES).map(([k, v]) => (
+          {Object.entries(DIFF).map(([k, v]) => (
             <button key={k} onClick={() => setDiff(k)} style={{
-              flex: 1, padding: "8px 4px", fontSize: 11, fontWeight: diff === k ? 700 : 400,
+              flex: 1, padding: "10px 2px", fontSize: 11, fontWeight: diff === k ? 700 : 400,
               fontFamily: "inherit", background: diff === k ? "#1e293b" : "transparent",
-              border: `1px solid ${diff === k ? C.accent : C.panelBd}`,
-              color: diff === k ? C.text : C.dim, borderRadius: 6, cursor: "pointer",
+              border: `1px solid ${diff === k ? K.acc : K.panBd}`,
+              color: diff === k ? K.txt : K.dim, borderRadius: 6, cursor: "pointer",
             }}>{v.name}</button>
           ))}
         </div>
-        <div style={{ fontSize: 10, color: C.dim, marginTop: 6 }}>
-          Depth: {DIFFICULTIES[diff].depth} | Mistakes: {(DIFFICULTIES[diff].mistake * 100).toFixed(0)}%
+        <div style={{ fontSize: 10, color: K.dim, marginTop: 8, textAlign: "center" }}>
+          Depth {DIFF[diff].depth}{DIFF[diff].mistake ? ` \u00B7 ${(DIFF[diff].mistake*100)|0}% mistakes` : " \u00B7 Perfect play"}
         </div>
       </div>
 
-      <div style={{ width: 320, marginBottom: 32 }}>
-        <div style={{ fontSize: 11, color: C.dim, textTransform: "uppercase", letterSpacing: 2, marginBottom: 10 }}>Who goes first</div>
+      <div style={{ width: 360, marginBottom: 40 }}>
+        <div style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 2, marginBottom: 10 }}>First Move</div>
         <div style={{ display: "flex", gap: 6 }}>
           {[["player","You"],["ai","AI"],["random","Random"]].map(([k,l]) => (
-            <button key={k} onClick={() => setFirstTurn(k)} style={{
-              flex: 1, padding: "8px 4px", fontSize: 12, fontWeight: firstTurn === k ? 700 : 400,
-              fontFamily: "inherit", background: firstTurn === k ? "#1e293b" : "transparent",
-              border: `1px solid ${firstTurn === k ? C.accent : C.panelBd}`,
-              color: firstTurn === k ? C.text : C.dim, borderRadius: 6, cursor: "pointer",
+            <button key={k} onClick={() => setFirst(k)} style={{
+              flex: 1, padding: "10px 4px", fontSize: 12, fontWeight: first === k ? 700 : 400,
+              fontFamily: "inherit", background: first === k ? "#1e293b" : "transparent",
+              border: `1px solid ${first === k ? K.acc : K.panBd}`,
+              color: first === k ? K.txt : K.dim, borderRadius: 6, cursor: "pointer",
             }}>{l}</button>
           ))}
         </div>
       </div>
 
-      <button onClick={startGame} style={{
-        padding: "12px 40px", fontSize: 14, fontWeight: 700, fontFamily: "inherit",
-        background: C.accent, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer",
-        letterSpacing: 2, textTransform: "uppercase",
-      }}>Start Game</button>
+      <button onClick={go} style={{
+        padding: "14px 52px", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
+        background: K.acc, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer",
+        letterSpacing: 3, textTransform: "uppercase",
+      }}>Play</button>
     </div>
   );
 
-  // ── GAME ──
+  // ══════ GAME ══════
   return (
-    <div style={{
-      minHeight: "100vh", background: C.bg, fontFamily: "'IBM Plex Mono', monospace",
-      color: C.text, padding: "12px 8px", boxSizing: "border-box",
-    }}>
+    <div style={{ minHeight: "100vh", background: K.bg, fontFamily: "'IBM Plex Mono',monospace", color: K.txt, padding: "10px 6px", boxSizing: "border-box" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
-        @keyframes dropIn { 0%{transform:translateY(-280px);opacity:.6} 60%{transform:translateY(6px)} 80%{transform:translateY(-3px)} 100%{transform:translateY(0);opacity:1} }
-        @keyframes pulse { 0%,100%{box-shadow:0 0 8px 2px} 50%{box-shadow:0 0 18px 5px} }
-        @keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:.6} }
-        .ch:hover{transform:scale(1.06)}
-        .trace-line{animation:fadeIn .2s ease-out}
-        @keyframes fadeIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes di{0%{transform:translateY(-260px);opacity:.4}60%{transform:translateY(5px)}80%{transform:translateY(-2px)}100%{transform:translateY(0);opacity:1}}
+        @keyframes pu{0%,100%{box-shadow:0 0 8px 2px}50%{box-shadow:0 0 16px 5px}}
+        @keyframes sh{0%,100%{opacity:1}50%{opacity:.45}}
+        .hv:hover{transform:scale(1.08)}
       `}</style>
 
       {/* Header */}
-      <div style={{ textAlign: "center", marginBottom: 8 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 2 }}>CONNECT FOUR</div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 18, fontSize: 11, color: C.dim, margin: "4px 0" }}>
-          <span><span style={{ color: C.player, fontWeight: 700 }}>You</span> {scores.p}</span>
-          <span>Draw {scores.d}</span>
-          <span><span style={{ color: C.ai, fontWeight: 700 }}>AI</span> {scores.a}</span>
-          <span style={{ color: C.accent }}>{DIFFICULTIES[diff].name}</span>
+      <div style={{ textAlign: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>CONNECT 4</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, fontSize: 11, color: K.dim, margin: "3px 0" }}>
+          <span><span style={{ color: K.pl, fontWeight: 700 }}>You</span> {sc.p}</span>
+          <span>Draw {sc.d}</span>
+          <span><span style={{ color: K.ai, fontWeight: 700 }}>AI</span> {sc.a}</span>
+          <span style={{ color: K.acc }}>{DIFF[diff].name}</span>
         </div>
         <div style={{
-          fontSize: 13, fontWeight: 700, marginBottom: 6,
-          color: status === "player_wins" ? C.win : status === "ai_wins" ? C.ai : C.text,
-          animation: status === "ai_thinking" ? "shimmer 1s infinite" : "none",
-        }}>{statusText}{moveNum > 0 ? ` \u2022 Move #${moveNum}` : ""}</div>
+          fontSize: 13, fontWeight: 700,
+          color: status === "pw" ? K.win : status === "aw" ? K.ai : K.txt,
+          animation: status === "think" ? "sh 1s infinite" : "none",
+        }}>{stTxt}</div>
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "flex-start", flexWrap: "wrap" }}>
 
-        {/* Board */}
-        <div style={{
-          background: `linear-gradient(180deg, ${C.board}, ${C.boardEdge})`,
-          borderRadius: 12, padding: 8, boxShadow: "0 6px 24px rgba(0,0,0,.5)",
-        }}>
+        {/* ── Board ── */}
+        <div style={{ background: `linear-gradient(180deg,${K.board},${K.boardE})`, borderRadius: 12, padding: 8, boxShadow: "0 6px 28px rgba(0,0,0,.6)" }}>
           <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
             {Array.from({ length: COLS }, (_, c) => (
-              <div key={c} style={{
-                width: "clamp(30px,8vw,48px)", height: 5, borderRadius: "3px 3px 0 0",
-                background: hover === c && status === "your_turn" ? C.player : "transparent",
-                transition: "background .15s",
-              }} />
+              <div key={c} style={{ width: "clamp(30px,8vw,48px)", height: 5, borderRadius: "3px 3px 0 0", background: hover === c && status === "turn" ? K.pl : "transparent", transition: "background .15s" }} />
             ))}
           </div>
           {board.map((row, r) => (
             <div key={r} style={{ display: "flex", gap: 4, marginBottom: 4 }}>
               {row.map((cell, c) => {
-                const isW = wCells.includes(`${r}-${c}`);
-                const isL = lastDrop === `${r}-${c}`;
-                const isPrev = hover === c && previewRow(c) === r && status === "your_turn";
+                const isW = wc.includes(`${r}-${c}`), isL = ld === `${r}-${c}`;
+                const isP = hover === c && pvR(c) === r && status === "turn";
                 const sz = "clamp(30px,8vw,48px)";
-                let bg = C.empty, sh = "inset 0 2px 5px rgba(0,0,0,.5)";
-                if (cell === PLAYER) { bg = `radial-gradient(circle at 35% 35%,${C.playerG},${C.player})`; sh = `inset 0 -2px 3px rgba(0,0,0,.3),0 0 6px ${C.player}44`; }
-                else if (cell === AI) { bg = `radial-gradient(circle at 35% 35%,${C.aiG},${C.ai})`; sh = `inset 0 -2px 3px rgba(0,0,0,.3),0 0 6px ${C.ai}44`; }
-                else if (isPrev) { bg = `${C.player}25`; sh = "inset 0 2px 4px rgba(0,0,0,.3)"; }
+                let bg = K.empty, sh = "inset 0 2px 5px rgba(0,0,0,.5)";
+                if (cell === PLAYER) { bg = `radial-gradient(circle at 35% 35%,${K.plG},${K.pl})`; sh = `inset 0 -2px 3px rgba(0,0,0,.3),0 0 6px ${K.pl}44`; }
+                else if (cell === AI) { bg = `radial-gradient(circle at 35% 35%,${K.aiG},${K.ai})`; sh = `inset 0 -2px 3px rgba(0,0,0,.3),0 0 6px ${K.ai}44`; }
+                else if (isP) { bg = `${K.pl}22`; sh = "inset 0 2px 4px rgba(0,0,0,.3)"; }
                 return (
-                  <div key={c} className={cell === EMPTY && status === "your_turn" ? "ch" : ""}
-                    onClick={() => handleClick(c)}
-                    onMouseEnter={() => setHover(c)} onMouseLeave={() => setHover(-1)}
+                  <div key={c} className={cell === EMPTY && status === "turn" ? "hv" : ""}
+                    onClick={() => click(c)} onMouseEnter={() => setHover(c)} onMouseLeave={() => setHover(-1)}
                     style={{
                       width: sz, height: sz, borderRadius: "50%", background: bg,
-                      boxShadow: isW ? `0 0 10px 3px ${C.winG}` : sh,
-                      cursor: status === "your_turn" && validMove(board, c) ? "pointer" : "default",
+                      boxShadow: isW ? `0 0 10px 3px ${K.winG}` : sh,
+                      cursor: status === "turn" && ok(board, c) ? "pointer" : "default",
                       transition: "transform .15s,box-shadow .2s",
-                      animation: isL && cell ? "dropIn .4s cubic-bezier(.34,1.56,.64,1)" : isW ? "pulse 1s infinite" : "none",
-                      border: isW ? `2px solid ${C.win}` : "2px solid transparent",
+                      animation: isL && cell ? "di .4s cubic-bezier(.34,1.56,.64,1)" : isW ? "pu 1s infinite" : "none",
+                      border: isW ? `2px solid ${K.win}` : "2px solid transparent",
                     }} />
                 );
               })}
@@ -472,190 +405,110 @@ export default function ConnectFour() {
           ))}
         </div>
 
-        {/* AI Panel */}
-        <div style={{
-          width: "clamp(280px,40vw,420px)", background: C.panel, border: `1px solid ${C.panelBd}`,
-          borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh",
-        }}>
-          {/* Panel tabs */}
-          <div style={{ display: "flex", borderBottom: `1px solid ${C.panelBd}`, background: "#0a0f1f" }}>
-            {[["summary","\u{1F4CB} Summary"],["trace","\u{1F50D} Trace"],["tree","\u{1F333} Tree"],["stats","\u{1F4CA} Stats"]].map(([k,l]) => (
-              <button key={k} onClick={() => setPanelTab(k)} style={{
-                flex: 1, padding: "8px 4px", fontSize: 10, fontWeight: panelTab === k ? 700 : 400,
-                fontFamily: "inherit", background: panelTab === k ? C.panel : "transparent",
-                border: "none", borderBottom: panelTab === k ? `2px solid ${C.accent}` : "2px solid transparent",
-                color: panelTab === k ? C.text : C.dim, cursor: "pointer",
-              }}>{l}</button>
-            ))}
+        {/* ── AI Panel ── */}
+        <div style={{ width: "clamp(280px,40vw,400px)", background: K.pan, border: `1px solid ${K.panBd}`, borderRadius: 10, overflow: "hidden", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "10px 14px", borderBottom: `1px solid ${K.panBd}`, background: "#06091a", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, fontSize: 12 }}>{"\u{1F9E0}"} AI Thought Process</span>
+            {ai && <span style={{ fontSize: 10, color: K.dim }}>{(ai.ms / 1000).toFixed(3)}s</span>}
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
-            {!aiResult ? (
-              <div style={{ color: C.dim, fontSize: 11, fontStyle: "italic", padding: 20, textAlign: "center" }}>
-                AI thought process will appear here after the first AI move
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {!ai ? (
+              <div style={{ color: K.dim, fontSize: 11, fontStyle: "italic", padding: 30, textAlign: "center" }}>
+                Play a move to see the AI think
               </div>
-            ) : panelTab === "summary" ? (
-              /* ── SUMMARY TAB ── */
-              <div style={{ fontSize: 11, lineHeight: 1.8 }}>
-                <div style={{ color: C.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, fontSize: 10 }}>Decision Summary</div>
-                <div style={{ color: C.dim }}>Difficulty: <span style={{ color: C.text }}>{DIFFICULTIES[aiResult.diff].name}</span> (depth={DIFFICULTIES[aiResult.diff].depth})</div>
-                <div style={{ marginTop: 10, marginBottom: 4, color: C.dim }}>Column Scores:</div>
-                {aiResult.colScores.map(cs => (
-                  <div key={cs.col} style={{
-                    display: "flex", justifyContent: "space-between", padding: "2px 8px",
-                    background: cs.best ? "#1e3a5f" : "transparent", borderRadius: 4,
-                    color: cs.pruned ? "#555" : cs.best ? C.ai : C.text,
-                    fontWeight: cs.best ? 700 : 400,
-                    textDecoration: cs.pruned ? "line-through" : "none",
+            ) : (
+              <>
+                {/* Score Bars */}
+                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${K.panBd}` }}>
+                  <div style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Column Evaluation</div>
+                  {ai.colScores.map(cs => <ScoreBar key={cs.col} col={cs.col} score={cs.score} best={cs.best} pruned={cs.pruned} />)}
+                  <div style={{
+                    marginTop: 8, padding: "7px 10px", borderRadius: 6, fontSize: 11,
+                    background: ai.oops ? "#451a03" : "#052e16",
+                    borderLeft: `3px solid ${ai.oops ? "#f97316" : "#22c55e"}`,
                   }}>
-                    <span>Col {cs.col}</span>
-                    <span>{cs.pruned ? "PRUNED" : cs.score >= 100000 ? "WIN" : cs.score <= -100000 ? "LOSE" : cs.score}{cs.best ? " \u2190 BEST" : ""}</span>
+                    {ai.oops
+                      ? <>{"\u26A0\uFE0F"} <span style={{ color: "#fb923c" }}>Mistake!</span> Col {ai.chosen} instead of {ai.bestCol}</>
+                      : <>{"\u2705"} Column {ai.chosen} ({fS(ai.score)})</>
+                    }
                   </div>
-                ))}
-                <div style={{ marginTop: 12, padding: "8px 10px", background: "#0c1425", borderRadius: 6, borderLeft: `3px solid ${aiResult.mistake_made ? "#f97316" : C.win}` }}>
-                  {aiResult.mistake_made ? (
-                    <><span style={{ color: "#f97316" }}>{"\u26A0"} MISTAKE!</span> AI chose col {aiResult.chosenCol} instead of optimal col {aiResult.bestCol}</>
-                  ) : (
-                    <><span style={{ color: C.win }}>{"\u2705"}</span> Play column {aiResult.chosenCol} (score: {aiResult.score >= 100000 ? "WIN" : aiResult.score <= -100000 ? "LOSE" : aiResult.score})</>
-                  )}
                 </div>
-                {/* Heuristic breakdown */}
-                {aiResult.heuristic.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ color: C.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontSize: 10 }}>Board Evaluation Breakdown</div>
-                    {aiResult.heuristic.map((h, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 8px", color: C.text }}>
-                        <span style={{ color: C.dim }}>{h.label}</span>
-                        <span style={{ color: "#6ee7b7" }}>{h.value}</span>
+
+                {/* Prune Events */}
+                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${K.panBd}` }}>
+                  <div style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>{"\u2702\uFE0F"} Prune Events ({ai.evts.length})</div>
+                  <div style={{ maxHeight: 110, overflowY: "auto" }}>
+                    {ai.evts.length === 0
+                      ? <div style={{ fontSize: 10, color: K.dim, fontStyle: "italic" }}>None</div>
+                      : ai.evts.slice(0, 25).map((e, i) => (
+                        <div key={i} style={{ fontSize: 10, color: "#fb923c", padding: "1px 0", display: "flex", gap: 5 }}>
+                          <span style={{ flexShrink: 0, color: "#f97316" }}>{"\u2702"}</span>
+                          <span>D{e.lvl} {e.who} @col{e.col}: \u03B1={e.alpha >= 100000 ? "W" : e.alpha <= -100000 ? "L" : e.alpha === -Infinity ? "-\u221E" : e.alpha} \u2265 \u03B2={e.beta <= -100000 ? "L" : e.beta >= 100000 ? "W" : e.beta === Infinity ? "+\u221E" : e.beta} \u2192 skip [{e.skipped.join(",")}]</span>
+                        </div>
+                      ))
+                    }
+                    {ai.evts.length > 25 && <div style={{ fontSize: 9, color: K.dim }}>+{ai.evts.length - 25} more</div>}
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${K.panBd}` }}>
+                  <div style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>{"\u{1F4CA}"} Stats</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 12px", fontSize: 11 }}>
+                    <span style={{ color: K.dim }}>Explored</span><span style={{ fontWeight: 600, textAlign: "right" }}>{(ai.totalN - ai.prunedN).toLocaleString()}</span>
+                    <span style={{ color: K.dim }}>Pruned</span><span style={{ fontWeight: 600, textAlign: "right", color: "#f97316" }}>{ai.prunedN.toLocaleString()} ({(ai.prunedN / ai.totalN * 100).toFixed(0)}%)</span>
+                    <span style={{ color: K.dim }}>Total</span><span style={{ fontWeight: 600, textAlign: "right" }}>{ai.totalN.toLocaleString()}</span>
+                    <span style={{ color: K.dim }}>Depth</span><span style={{ fontWeight: 600, textAlign: "right" }}>{DIFF[ai.diffKey].depth}</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 9, color: K.dim, marginBottom: 3 }}>Explored vs Pruned</div>
+                    <div style={{ height: 10, background: "#111827", borderRadius: 5, overflow: "hidden", display: "flex" }}>
+                      <div style={{ width: `${((ai.totalN - ai.prunedN) / ai.totalN * 100)}%`, background: K.acc, borderRadius: "5px 0 0 5px", transition: "width .5s" }} />
+                      <div style={{ flex: 1, background: "#f97316" }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: K.dim, marginTop: 2 }}>
+                      <span>{"\u{1F7E6}"} Explored</span><span>{"\u{1F7E7}"} Pruned</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tree */}
+                <div style={{ padding: "10px 12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, color: K.dim, textTransform: "uppercase", letterSpacing: 1 }}>{"\u{1F333}"} Decision Tree</span>
+                    <div style={{ display: "flex", gap: 3 }}>
+                      {[1, 2, 3].map(d => (
+                        <button key={d} onClick={() => setTd(d)} style={{
+                          padding: "2px 7px", fontSize: 9, fontFamily: "inherit",
+                          background: td === d ? "#1e293b" : "transparent",
+                          border: `1px solid ${K.panBd}`, color: td === d ? K.txt : K.dim,
+                          borderRadius: 4, cursor: "pointer",
+                        }}>{d}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 200, paddingBottom: 4 }}>
+                    <TreeViz node={ai.tree} max={td} />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, paddingTop: 6, borderTop: `1px solid ${K.panBd}` }}>
+                    {[["#422006","AI (max)"],["#450a0a","You (min)"],["#111","\u2702 Pruned"],["#22c55e","W"],["#ef4444","L"]].map(([bg,l]) => (
+                      <div key={l} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: K.dim }}>
+                        <div style={{ width: 9, height: 9, borderRadius: 2, background: bg }} />{l}
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-            ) : panelTab === "trace" ? (
-              /* ── TRACE TAB ── */
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ color: C.dim, fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>Minimax Trace</span>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {[["key","Key"],["full","Full"]].map(([k,l]) => (
-                      <button key={k} onClick={() => setTraceMode(k)} style={{
-                        padding: "2px 8px", fontSize: 9, fontFamily: "inherit",
-                        background: traceMode === k ? "#1e293b" : "transparent",
-                        border: `1px solid ${C.panelBd}`, color: traceMode === k ? C.text : C.dim,
-                        borderRadius: 4, cursor: "pointer",
-                      }}>{l}</button>
-                    ))}
-                  </div>
                 </div>
-                <div ref={traceRef} style={{ maxHeight: 400, overflowY: "auto", fontSize: 10, lineHeight: 1.6 }}>
-                  {filteredTrace.map((t, i) => (
-                    <div key={i} className="trace-line" style={{
-                      color: traceColor(t.type), padding: "1px 0",
-                      fontWeight: t.type === "prune" || t.type === "result" ? 600 : 400,
-                      whiteSpace: "pre-wrap", wordBreak: "break-all",
-                    }}>{t.text}</div>
-                  ))}
-                  {filteredTrace.length === 0 && <div style={{ color: C.dim, fontStyle: "italic" }}>No trace data</div>}
-                </div>
-                {/* mini legend */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.panelBd}` }}>
-                  {[
-                    ["\u03B1","Alpha (AI best)","#38bdf8"],
-                    ["\u03B2","Beta (Your best)","#c084fc"],
-                    ["\u2702","Pruned","#f97316"],
-                    ["\u2605","New best","#fbbf24"],
-                  ].map(([sym, label, color]) => (
-                    <span key={sym} style={{ fontSize: 9, color: C.dim }}><span style={{ color }}>{sym}</span> {label}</span>
-                  ))}
-                </div>
-              </div>
-            ) : panelTab === "tree" ? (
-              /* ── TREE TAB ── */
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ color: C.dim, fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>Decision Tree</span>
-                  <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-                    <span style={{ color: C.dim, fontSize: 9 }}>Depth:</span>
-                    {[1, 2, 3].map(d => (
-                      <button key={d} onClick={() => setTreeDepth(d)} style={{
-                        padding: "1px 6px", fontSize: 9, fontFamily: "inherit",
-                        background: treeDepth === d ? "#1e293b" : "transparent",
-                        border: `1px solid ${C.panelBd}`, color: treeDepth === d ? C.text : C.dim,
-                        borderRadius: 3, cursor: "pointer",
-                      }}>{d}</button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 350, paddingBottom: 4 }}>
-                  <TreeNode node={aiResult.tree} maxD={treeDepth} />
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.panelBd}` }}>
-                  {[
-                    ["#3b2f0a","AI (max)"], ["#3b0a0a","You (min)"],
-                    ["#1e1e2e","Pruned"], ["#22c55e","W=Win"], ["#ef4444","L=Lose"],
-                  ].map(([bg, label]) => (
-                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: C.dim }}>
-                      <div style={{ width: 9, height: 9, borderRadius: 2, background: bg }} />{label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              /* ── STATS TAB ── */
-              <div style={{ fontSize: 11, lineHeight: 2 }}>
-                <div style={{ color: C.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, fontSize: 10 }}>Statistics</div>
-                {[
-                  ["Nodes explored", aiResult.totalN - aiResult.prunedN],
-                  ["Nodes pruned", `${aiResult.prunedN} (${(aiResult.prunedN / aiResult.totalN * 100).toFixed(1)}%)`],
-                  ["Total tree size", aiResult.totalN],
-                  ["Search depth", DIFFICULTIES[aiResult.diff].depth],
-                  ["Time", `${aiResult.elapsed}s`],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "2px 8px" }}>
-                    <span style={{ color: C.dim }}>{k}</span>
-                    <span style={{ color: C.text, fontWeight: 600 }}>{v}</span>
-                  </div>
-                ))}
-
-                <div style={{ marginTop: 16, padding: "10px 12px", background: "#0c1425", borderRadius: 6 }}>
-                  <div style={{ color: C.dim, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>How to Read This</div>
-                  {[
-                    ["MAX(AI)", "AI\u2019s turn \u2014 picks highest score"],
-                    ["MIN(You)", "Your turn \u2014 AI assumes you pick lowest"],
-                    ["\u03B1 Alpha", "Best score AI can guarantee"],
-                    ["\u03B2 Beta", "Best score you can guarantee"],
-                    ["\u2702 Prune", "\u03B1 \u2265 \u03B2, branch is useless \u2014 skip it"],
-                    ["WIN +100k", "Guaranteed winning path found"],
-                    ["LOSE -100k", "Guaranteed loss if opponent plays well"],
-                    ["Heuristic", "Estimated score at depth limit"],
-                  ].map(([k, v]) => (
-                    <div key={k} style={{ fontSize: 10, lineHeight: 1.6, padding: "1px 0" }}>
-                      <span style={{ color: C.accent, fontWeight: 600 }}>{k}:</span>{" "}
-                      <span style={{ color: C.dim }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Bottom buttons */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 12 }}>
-        {gameOver && (
-          <button onClick={startGame} style={{
-            padding: "8px 24px", fontSize: 12, fontWeight: 700, fontFamily: "inherit",
-            background: C.text, color: C.bg, border: "none", borderRadius: 6,
-            cursor: "pointer", letterSpacing: 2, textTransform: "uppercase",
-          }}>New Game</button>
-        )}
-        <button onClick={resetToMenu} style={{
-          padding: "8px 24px", fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-          background: "transparent", color: C.dim, border: `1px solid ${C.panelBd}`,
-          borderRadius: 6, cursor: "pointer", letterSpacing: 1,
-        }}>Menu</button>
+      {/* Buttons */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 10 }}>
+        {over && <button onClick={go} style={{ padding: "8px 24px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", background: K.txt, color: K.bg, border: "none", borderRadius: 6, cursor: "pointer", letterSpacing: 2, textTransform: "uppercase" }}>New Game</button>}
+        <button onClick={() => { setPhase("menu"); setAi(null); ref.current = false; }} style={{ padding: "8px 24px", fontSize: 11, fontFamily: "inherit", background: "transparent", color: K.dim, border: `1px solid ${K.panBd}`, borderRadius: 6, cursor: "pointer" }}>Menu</button>
       </div>
     </div>
   );
